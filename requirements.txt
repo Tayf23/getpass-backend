@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-docx
+hijri-converter
+PyPDF2
+python-multipart
+pydantic
