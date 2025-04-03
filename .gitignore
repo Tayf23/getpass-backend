@@ -1,0 +1,6 @@
+/react-app/
+/output/
+/venv/
+/__pycache__/
+people_data.txt
+Printt.py
