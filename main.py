@@ -172,7 +172,7 @@ def process_document(date_info, people, template_file, output_file):
                             run.font.bold = True  
                             run.font.name = 'Arial (Body CS)'
                             if text in {replacements.get("[d]"), replacements.get("[D]")}:
-                                paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+                                paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
                             elif text in {replacements.get("[M]"), replacements.get("[m]")}:
                                 paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER       
                             elif text in {replacements.get("[Y]"), replacements.get("[yyyy]")}:
