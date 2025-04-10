@@ -215,13 +215,12 @@ def process_document(date_info, people, template_file, output_file):
 
 def convert_to_pdf(docx_file, pdf_file):
     """
-    Convert a Word document to PDF using LibreOffice
+    Convert a Word document to PDF using unoconv
     Returns True if successful, False otherwise
     """
     try:
-        # Use LibreOffice for conversion (must be installed on the server)
-        cmd = ['libreoffice', '--headless', '--convert-to', 'pdf', 
-               '--outdir', os.path.dirname(pdf_file), docx_file]
+        # Use unoconv for conversion (must be installed on the server)
+        cmd = ['unoconv', '-f', 'pdf', '-o', pdf_file, docx_file]
         
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
@@ -230,12 +229,10 @@ def convert_to_pdf(docx_file, pdf_file):
             logger.error(f"Error converting to PDF: {stderr.decode()}")
             return False
         
-        # Rename the output file if needed
-        default_pdf = os.path.splitext(os.path.basename(docx_file))[0] + '.pdf'
-        default_pdf_path = os.path.join(os.path.dirname(pdf_file), default_pdf)
-        
-        if default_pdf_path != pdf_file:
-            os.rename(default_pdf_path, pdf_file)
+        # Check if the output file exists
+        if not os.path.exists(pdf_file):
+            logger.error(f"PDF file was not created: {pdf_file}")
+            return False
             
         return True
     except Exception as e:
