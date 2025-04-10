@@ -465,88 +465,110 @@ async def generate_getpass(data: GetPassData):
         # Create a temporary directory for working files
         with tempfile.TemporaryDirectory() as temp_dir:
             template_file = "GETPASS.docx"  # Path to your template file
-            docx_files = []
-            pdf_files = []
-            conversion_success = True
-            
-            # Convert each date and process the document
-            for i, date_entry in enumerate(data.dates):
-                try:
-                    # Convert Gregorian date to Hijri
-                    date_info = convert_to_hijri(date_entry.date)
-                    
-                    docx_file = os.path.join(temp_dir, f"getpass_{i}.docx")
-                    pdf_file = os.path.join(temp_dir, f"getpass_{i}.pdf")
-                    
-                    # Process the document with converted date
-                    processed_docx = process_document(date_info, data.people, template_file, docx_file)
-                    docx_files.append(processed_docx)
-                    
-                    # Try to convert to PDF
-                    if convert_to_pdf(docx_file, pdf_file):
-                        pdf_files.append(pdf_file)
-                    else:
-                        conversion_success = False
-                        logger.warning(f"Failed to convert {docx_file} to PDF")
-                        
-                except ValueError as e:
-                    logger.error(f"Invalid date format: {e}")
-                    raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
+            output_files = []
             
             # Create output directory
             output_dir = "output"
             os.makedirs(output_dir, exist_ok=True)
             
-            # If PDF conversion was successful and there are multiple PDFs
-            if conversion_success and len(pdf_files) > 1:
-                final_pdf_path = os.path.join(output_dir, "getpass.pdf")
-                if merge_pdfs(pdf_files, final_pdf_path):
-                    return FileResponse(
-                        path=final_pdf_path,
-                        filename="getpass.pdf",
-                        media_type="application/pdf"
-                    )
-                else:
-                    # If merging PDFs fails, fall back to Word documents
-                    conversion_success = False
+            # Process each date entry
+            for i, date_entry in enumerate(data.dates):
+                try:
+                    # Convert Gregorian date to Hijri
+                    date_info = convert_to_hijri(date_entry.date)
+                    
+                    # Extract the Gregorian date for the filename
+                    _, _, gregorian_date_str = date_info
+                    date_for_filename = gregorian_date_str.replace('/', '-')
+                    
+                    # Create a filename with the date
+                    output_filename = f"getpass_{date_for_filename}.docx"
+                    output_path = os.path.join(output_dir, output_filename)
+                    
+                    # Process the document with converted date
+                    process_document(date_info, data.people, template_file, output_path)
+                    output_files.append((output_path, output_filename))
+                        
+                except ValueError as e:
+                    logger.error(f"Invalid date format: {e}")
+                    raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
             
-            # If PDF conversion was successful but there's only one PDF
-            elif conversion_success and len(pdf_files) == 1:
-                final_pdf_path = os.path.join(output_dir, "getpass.pdf")
-                shutil.copy2(pdf_files[0], final_pdf_path)
-                return FileResponse(
-                    path=final_pdf_path,
-                    filename="getpass.pdf",
-                    media_type="application/pdf"
+            # If we have files to return
+            if output_files:
+                # Create HTML response that triggers downloads for all files
+                html_content = """
+                <html>
+                <head>
+                    <title>Download GetPass Documents</title>
+                    <script>
+                        function downloadAll() {
+                            const files = FILELIST;
+                            
+                            files.forEach((file, index) => {
+                                setTimeout(() => {
+                                    const link = document.createElement('a');
+                                    link.href = file.url;
+                                    link.download = file.name;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                }, index * 500); // Delay each download by 500ms
+                            });
+                        }
+                        window.onload = downloadAll;
+                    </script>
+                </head>
+                <body>
+                    <h1>Your documents are being downloaded...</h1>
+                    <p>If downloads don't start automatically, click on the links below:</p>
+                    <ul>
+                        LINKLIST
+                    </ul>
+                </body>
+                </html>
+                """
+                
+                # Create file list for JavaScript
+                file_list_json = []
+                link_list_html = ""
+                
+                for i, (file_path, filename) in enumerate(output_files):
+                    file_url = f"/download-getpass/{filename}"
+                    file_list_json.append({"url": file_url, "name": filename})
+                    link_list_html += f'<li><a href="{file_url}">{filename}</a></li>\n'
+                
+                html_content = html_content.replace("FILELIST", str(file_list_json))
+                html_content = html_content.replace("LINKLIST", link_list_html)
+                
+                return Response(
+                    content=html_content,
+                    media_type="text/html"
                 )
-            
-            # If PDF conversion failed or PDF merging failed, return Word documents
-            if not conversion_success:
-                if len(docx_files) == 1:
-                    # Return a single Word document
-                    final_docx_path = os.path.join(output_dir, "getpass.docx")
-                    shutil.copy2(docx_files[0], final_docx_path)
-                    return FileResponse(
-                        path=final_docx_path,
-                        filename="getpass.docx",
-                        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
-                else:
-                    # Create a ZIP file with all Word documents
-                    zip_path = os.path.join(output_dir, "getpass_documents.zip")
-                    if create_docx_zip(docx_files, zip_path):
-                        return FileResponse(
-                            path=zip_path,
-                            filename="getpass_documents.zip",
-                            media_type="application/zip"
-                        )
-            
-            # If we got here, something unexpected happened
-            raise HTTPException(status_code=500, detail="Failed to generate documents")
+            else:
+                raise HTTPException(status_code=404, detail="No files were generated")
             
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.get("/download-getpass/{filename}")
+async def download_getpass(filename: str):
+    try:
+        file_path = os.path.join("output", filename)
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Return the file
+        return FileResponse(
+            path=file_path,
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        logger.error(f"Error downloading file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
 
 @app.get("/")
