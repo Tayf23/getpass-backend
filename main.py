@@ -254,18 +254,26 @@ def process_document(date_info, people, template_file, output_file):
 
 def convert_to_pdf(docx_file, pdf_file):
     """
-    Convert a Word document to PDF using unoconv
+    Convert a Word document to PDF using unoconv with explicit Python path
     Returns True if successful, False otherwise
     """
     try:
-        # Use unoconv for conversion (must be installed on the server)
-        cmd = ['unoconv', '-f', 'pdf', '-o', pdf_file, docx_file]
+        # Use the Python that has UNO installed
+        python_with_uno = "/usr/bin/python3"
+        
+        # Full path to unoconv
+        unoconv_path = "/usr/bin/unoconv"
+        
+        cmd = [python_with_uno, unoconv_path, '-f', 'pdf', '-o', pdf_file, docx_file]
+        
+        logger.info(f"Running conversion command: {' '.join(cmd)}")
         
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
-            logger.error(f"Error converting to PDF: {stderr.decode()}")
+            stderr_output = stderr.decode()
+            logger.error(f"Error converting to PDF: {stderr_output}")
             return False
         
         # Check if the output file exists
@@ -273,6 +281,7 @@ def convert_to_pdf(docx_file, pdf_file):
             logger.error(f"PDF file was not created: {pdf_file}")
             return False
             
+        logger.info(f"Successfully converted {docx_file} to {pdf_file}")
         return True
     except Exception as e:
         logger.error(f"Error in PDF conversion: {str(e)}")
