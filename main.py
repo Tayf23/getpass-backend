@@ -43,6 +43,42 @@ class GetPassData(BaseModel):
     people: List[Person]
     dates: List[GregorianDate]
 
+
+def embed_fonts(doc):
+    """
+    Attempt to add font embedding settings to the Word document
+    """
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        
+        # Create new settings element if it doesn't exist
+        if not doc.settings._element:
+            doc._part.add_settings_part()
+        
+        settings = doc.settings._element
+        
+        # Try to add the embedSystemFonts setting
+        embed_fonts_elm = OxmlElement('w:embedSystemFonts')
+        embed_fonts_elm.set(qn('w:val'), 'true')
+        settings.append(embed_fonts_elm)
+        
+        # Try to add embedTrueTypeFonts setting
+        embed_tt_fonts = OxmlElement('w:embedTrueTypeFonts')
+        embed_tt_fonts.set(qn('w:val'), 'true')
+        settings.append(embed_tt_fonts)
+        
+        # Add saveSubsetFonts setting
+        save_subset = OxmlElement('w:saveSubsetFonts')
+        save_subset.set(qn('w:val'), 'true')
+        settings.append(save_subset)
+        
+        logger.info("Added font embedding settings to document")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to set font embedding: {str(e)}")
+        return False
+
 # Arabic day names
 ARABIC_DAY_NAMES = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
 
@@ -208,6 +244,9 @@ def process_document(date_info, people, template_file, output_file):
             # تطبيق التنسيق على الخلايا
             for j in range(3):
                 set_cell_style(row.cells[j])
+
+
+    embed_fonts(doc)
 
     doc.save(output_file)
     logger.info(f"تم إنشاء الملف بنجاح: {output_file}")
