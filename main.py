@@ -504,13 +504,18 @@ async def generate_getpass(data: GetPassData, request: Request):
                     logger.error(f"Invalid date format: {e}")
                     raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
             
-            # If only one file, return it directly
+            # If only one file, return it directly with proper headers
             if len(output_files) == 1:
                 file_path = os.path.join(session_dir, output_files[0]["filename"])
+                filename = output_files[0]["filename"]
+                
                 return FileResponse(
                     path=file_path,
-                    filename=output_files[0]["filename"],
-                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    filename=filename,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{filename}"'
+                    }
                 )
             
             # If multiple files, return JSON with file data
