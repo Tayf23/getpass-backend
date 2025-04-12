@@ -459,7 +459,7 @@ def merge_docx_files(docx_files, output_file):
 #         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @app.post("/generate-getpass/")
-async def generate_getpass(data: GetPassData):
+async def generate_getpass(data: GetPassData, request: Request):
     try:
         # Create a temporary directory for working files
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -514,15 +514,20 @@ async def generate_getpass(data: GetPassData):
                 )
             
             # If multiple files, return JSON with file data
+            host = request.headers.get("host", "localhost:8000")
+            protocol = "https" if request.headers.get("x-forwarded-proto") == "https" else "http"
+            base_url = f"{protocol}://{host}"
+            
             return {
                 "files": output_files,
-                "baseUrl": f"http://{request.client.host}:{request.client.port}" 
+                "baseUrl": base_url
             }
             
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
+# Remove the duplicate route, keep only one of these
 @app.get("/download-file/{session_id}/{filename}")
 async def download_file(session_id: str, filename: str):
     file_path = os.path.join("output", session_id, filename)
@@ -534,39 +539,6 @@ async def download_file(session_id: str, filename: str):
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
-
-@app.get("/download-file/{session_id}/{filename}")
-async def download_file(session_id: str, filename: str):
-    file_path = os.path.join("output", session_id, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-
-@app.get("/download-getpass/{filename}")
-async def download_getpass(filename: str):
-    try:
-        file_path = os.path.join("output", filename)
-        
-        # Check if file exists
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        # Return the file
-        return FileResponse(
-            path=file_path,
-            filename=filename,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-    except Exception as e:
-        logger.error(f"Error downloading file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
-
-
 @app.get("/")
 async def root():
     return {"message": "GetPass API is running. Use /generate-getpass/ endpoint to generate getpass documents."}
