@@ -458,18 +458,23 @@ def merge_docx_files(docx_files, output_file):
 #         logger.error(f"Error processing request: {str(e)}")
 #         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
-
 @app.post("/generate-getpass/")
 async def generate_getpass(data: GetPassData):
     try:
         # Create a temporary directory for working files
         with tempfile.TemporaryDirectory() as temp_dir:
             template_file = "GETPASS.docx"  # Path to your template file
-            output_files = []
             
             # Create output directory
             output_dir = "output"
             os.makedirs(output_dir, exist_ok=True)
+            
+            # Create a unique session ID for this batch of files
+            session_id = datetime.now().strftime("%Y%m%d%H%M%S")
+            session_dir = os.path.join(output_dir, session_id)
+            os.makedirs(session_dir, exist_ok=True)
+            
+            output_files = []
             
             # Process each date entry
             for i, date_entry in enumerate(data.dates):
@@ -481,75 +486,66 @@ async def generate_getpass(data: GetPassData):
                     _, _, gregorian_date_str = date_info
                     date_for_filename = gregorian_date_str.replace('/', '-')
                     
-                    # Create a filename with the date
+                    # Create output filename with date
                     output_filename = f"getpass_{date_for_filename}.docx"
-                    output_path = os.path.join(output_dir, output_filename)
+                    output_path = os.path.join(session_dir, output_filename)
                     
-                    # Process the document with converted date
+                    # Process the document
                     process_document(date_info, data.people, template_file, output_path)
-                    output_files.append((output_path, output_filename))
+                    
+                    # Add file info to output list
+                    file_url = f"/download-file/{session_id}/{output_filename}"
+                    output_files.append({
+                        "filename": output_filename,
+                        "url": file_url
+                    })
                         
                 except ValueError as e:
                     logger.error(f"Invalid date format: {e}")
                     raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
             
-            # If we have files to return
-            if output_files:
-                # Create HTML response that triggers downloads for all files
-                html_content = """
-                <html>
-                <head>
-                    <title>Download GetPass Documents</title>
-                    <script>
-                        function downloadAll() {
-                            const files = FILELIST;
-                            
-                            files.forEach((file, index) => {
-                                setTimeout(() => {
-                                    const link = document.createElement('a');
-                                    link.href = file.url;
-                                    link.download = file.name;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
-                                }, index * 500); // Delay each download by 500ms
-                            });
-                        }
-                        window.onload = downloadAll;
-                    </script>
-                </head>
-                <body>
-                    <h1>Your documents are being downloaded...</h1>
-                    <p>If downloads don't start automatically, click on the links below:</p>
-                    <ul>
-                        LINKLIST
-                    </ul>
-                </body>
-                </html>
-                """
-                
-                # Create file list for JavaScript
-                file_list_json = []
-                link_list_html = ""
-                
-                for i, (file_path, filename) in enumerate(output_files):
-                    file_url = f"/download-getpass/{filename}"
-                    file_list_json.append({"url": file_url, "name": filename})
-                    link_list_html += f'<li><a href="{file_url}">{filename}</a></li>\n'
-                
-                html_content = html_content.replace("FILELIST", str(file_list_json))
-                html_content = html_content.replace("LINKLIST", link_list_html)
-                
-                return Response(
-                    content=html_content,
-                    media_type="text/html"
+            # If only one file, return it directly
+            if len(output_files) == 1:
+                file_path = os.path.join(session_dir, output_files[0]["filename"])
+                return FileResponse(
+                    path=file_path,
+                    filename=output_files[0]["filename"],
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
-            else:
-                raise HTTPException(status_code=404, detail="No files were generated")
+            
+            # If multiple files, return JSON with file data
+            return {
+                "files": output_files,
+                "baseUrl": f"http://{request.client.host}:{request.client.port}" 
+            }
             
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.get("/download-file/{session_id}/{filename}")
+async def download_file(session_id: str, filename: str):
+    file_path = os.path.join("output", session_id, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+@app.get("/download-file/{session_id}/{filename}")
+async def download_file(session_id: str, filename: str):
+    file_path = os.path.join("output", session_id, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 @app.get("/download-getpass/{filename}")
 async def download_getpass(filename: str):
